@@ -130,6 +130,7 @@
 
 <div class="progress" id="progress"></div>
 <canvas id="ambient"></canvas>
+<audio id="bgm" src="BGMUSIC.mp3" loop preload="auto"></audio>
 
 <nav class="nav">
   <span class="brand">My Memory Book</span>
@@ -175,7 +176,7 @@
     <div class="qr-box" id="qr" aria-label="QR code linking to this page"></div>
     <div class="qr-txt">
       <h3>The page that plays itself</h3>
-      <p>This QR points to this site. Print it in your paper book, and a flip of the page opens the whole thing on a phone. Share the site first so friends can open it.</p>
+      <p>Scan to open the live book at <b>tenzingjangsel.github.io/memorybook</b>. Print this QR in your paper book, and a flip of the page opens the whole thing — music and all — on a phone.</p>
     </div>
   </section>
 
@@ -323,47 +324,34 @@
     if (pf) { if (e.key === 'ArrowRight') pf.flipNext(); else if (e.key === 'ArrowLeft') pf.flipPrev(); }
   });
 
-  // ---- ambient background track (Web Audio, synthesized, opt-in) ----
+  // ---- background track (hosted mp3, opt-in, fades in/out) ----
   var audio = (function () {
-    var ctx, master, playing = false, timer, drone = [];
-    var scale = [196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33]; // soft G/A pentatonic
-    function note() {
-      if (!playing) return;
-      var t = ctx.currentTime, f = scale[(Math.random() * scale.length) | 0];
-      var o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
-      var g = ctx.createGain(); g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.11, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.0);
-      var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2000;
-      o.connect(g); g.connect(lp); lp.connect(master); o.start(t); o.stop(t + 2.1);
+    var el = document.getElementById('bgm'), MAX = 0.55, fade = null;
+    function ramp(to, ms, done) {
+      clearInterval(fade); var from = el.volume, t0 = performance.now();
+      fade = setInterval(function () {
+        var k = Math.min(1, (performance.now() - t0) / ms);
+        el.volume = Math.max(0, Math.min(1, from + (to - from) * k));
+        if (k >= 1) { clearInterval(fade); if (done) done(); }
+      }, 40);
     }
-    function start() {
-      if (playing) return;
-      try { ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; }
-      if (ctx.state === 'suspended') ctx.resume();
-      master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
-      master.gain.linearRampToValueAtTime(0.85, ctx.currentTime + 2);
-      [98.00, 146.83].forEach(function (f) {               // low drone pad
-        var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
-        var g = ctx.createGain(); g.gain.value = 0.05;
-        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
-        o.connect(g); g.connect(lp); lp.connect(master); o.start(); drone.push(o);
-      });
-      playing = true; timer = setInterval(function () { if (Math.random() < 0.8) note(); }, 1150);
-      return true;
-    }
-    function stop() {
-      if (!playing) return; playing = false; clearInterval(timer);
-      try { master.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); } catch (e) {}
-      drone.forEach(function (o) { try { o.stop(ctx.currentTime + 1.1); } catch (e) {} }); drone = [];
-    }
-    return { toggle: function () { return playing ? (stop(), false) : start(); } };
+    return {
+      play: function () { el.volume = 0; var p = el.play(); ramp(MAX, 1200);
+        if (p && p.catch) p.catch(function () {}); },
+      stop: function () { ramp(0, 800, function () { el.pause(); }); }
+    };
   })();
   (function () {
-    var btn = document.getElementById('music');
+    var btn = document.getElementById('music'), playing = false;
     btn.addEventListener('click', function () {
-      var on = audio.toggle();
-      btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      btn.textContent = on ? '♪ on' : '♪ music';
+      playing = !playing;
+      if (playing) audio.play(); else audio.stop();
+      btn.classList.toggle('on', playing); btn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+      btn.textContent = playing ? '♪ on' : '♪ music';
+    });
+    // if the file can't load, keep the button from implying sound
+    document.getElementById('bgm').addEventListener('error', function () {
+      btn.title = 'Music file not found next to the page'; btn.style.opacity = '.5';
     });
   })();
 
@@ -377,7 +365,7 @@
   // ---- QR ----
   (function () {
     var box = document.getElementById('qr'); if (!box || typeof QRCode === 'undefined') return;
-    try { new QRCode(box, { text: location.href.split('#')[0], width: 190, height: 190, colorDark: '#2a211c', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
+    try { new QRCode(box, { text: 'https://tenzingjangsel.github.io/memorybook/', width: 190, height: 190, colorDark: '#2a211c', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
   })();
 
   // ---- reveal ----
